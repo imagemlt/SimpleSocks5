@@ -1,5 +1,5 @@
 /*
-** socks5server.c -A simple socks5 server
+** socks5server.c - A simple socks5 server
 */
 #include <stdio.h>
 #include <stdlib.h>
