@@ -11,7 +11,7 @@
 #include <netdb.h>
 #include <signal.h>
 
-#define PORT "3456"
+#define PORT "1080"
 #define STDIN 0
 
 static void sig_child(int signo);
@@ -191,7 +191,7 @@ int deal_connection(int sockfd){
        }
 }
 
-int main(void)
+int main(int argc,char* argv[])
 {
     pid_t pid;
     int listener;
@@ -200,18 +200,22 @@ int main(void)
     socklen_t addrlen;
     char buf[256];
     char mess[256];
+    char port[10];
     int nbytes;
     char remoteIP[INET6_ADDRSTRLEN];
 
     int yes = 1;
     int i, j, rv;
     struct addrinfo hints, *ai, *p;
+
     signal(SIGCHLD,sig_child);
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
-    if ((rv = getaddrinfo(NULL, PORT, &hints, &ai)) != 0)
+    if(argc>1)strncpy(port,argv[1],sizeof port);
+    else strncpy(port,PORT,sizeof port);
+    if ((rv = getaddrinfo(NULL, port, &hints, &ai)) != 0)
     {
         fprintf(stderr, "selectserver:%s\n", gai_strerror(rv));
         exit(1);
