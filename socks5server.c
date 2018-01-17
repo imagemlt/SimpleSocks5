@@ -15,6 +15,9 @@
 #define STDIN 0
 
 static void sig_child(int signo);
+char username[255];
+char password[255];
+int encrypt;
 void *get_in_addr(struct sockaddr *sa)
 {
     if (sa->sa_family == AF_INET)
@@ -60,8 +63,9 @@ int deal_connection(int sockfd){
         close(sockfd);
         return -1;
     }
+	j=encrypt?2:0;
 	for(i=0;i<buf[1];i++){
-		if(buf[2+i]==0){
+		if(buf[2+i]==j){
 		break;
 		}
 	}
@@ -74,13 +78,62 @@ int deal_connection(int sockfd){
 	close(sockfd);
 	return -1;
     }
+	if(encrypt){
+		if(send(sockfd,"\x05\x02",2,0)<0){
+			perror("send encrypt error");
+			close(sockfd);
+			return -1;
+		}
+		if((rv=recv(sockfd,buf,sizeof buf,0))<=0){
+			perror("recv error");
+			close(sockfd);
+			return -1;
+		}
+		if(buf[0]!=1){
+			printf("version error\r\n");
+			printf("data recived:%d%d\r\n",buf[0],buf[1]);
+			close(sockfd);
+			return -1;
+		}
+		char* name=(char*)malloc((sizeof(char)) * (buf[1]+1));
+		memset(name,0,buf[1]+1);
+		strncpy(name,buf+2,buf[1]);
+		char* pass=(char*)malloc((sizeof(char))* (buf[buf[1]+2]+1));
+		memset(pass,0,(buf[buf[1]+2]+1));
+		strncpy(pass,buf+3+buf[1],buf[buf[1]+2]);
+		printf("%s,%s\r\n",name,pass);
+		if(strcmp(username,name)||strcmp(password,pass)){
+			printf("encrypt error\r\n");
+			if(send(sockfd,"\x01\x01",2,0)<0){
+				perror("send error");
+				close(sockfd);
+				return -1;
+			}
+			close(sockfd);
+			return -1;
+		}
+		printf("encrypt success!!!\r\n");
+		free(name);
+		free(pass);
+		if(send(sockfd,"\x01\x00",2,0)<0){
+       		 	perror("send error");
+        		close(sockfd);
+        		return -1;
+        	}
+
+	}
+	else{
 	if(send(sockfd,"\x05\x00",2,0)<0){
 	perror("send error");
 	close(sockfd);
 	return -1;
 	}
-    if((rv=recv(sockfd,buf,sizeof buf,0))<0){
+	}
+	
+    if((rv=recv(sockfd,buf,sizeof buf,0))<=0){
         perror("recv error");
+	close(sockfd);
+	return -1;
     }
    if(buf[0]!=5){
         fprintf(stderr,"socks type error!\r\n");
@@ -234,8 +287,17 @@ int main(int argc,char* argv[])
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
-    if(argc>1)strncpy(port,argv[1],sizeof port);
-    else strncpy(port,PORT,sizeof port);
+    memset(port,0,sizeof port);
+    memset(username,0,sizeof username);
+    memset(password,0,sizeof password);
+    if(argc>1)strncpy(port,argv[1],sizeof port -1);
+    else strncpy(port,PORT,sizeof port -1);
+    if(argc>=4){
+		strncpy(username,argv[2],sizeof username -1);
+		strncpy(password,argv[3],sizeof password -1);
+		encrypt=1;
+	}
+	else encrypt=0;
     if ((rv = getaddrinfo(NULL, port, &hints, &ai)) != 0)
     {
         fprintf(stderr, "selectserver:%s\n", gai_strerror(rv));
