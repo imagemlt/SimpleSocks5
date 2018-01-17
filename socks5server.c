@@ -103,12 +103,7 @@ int deal_connection(int sockfd){
             memcpy(&(remoteaddr.sin_port),buf+8,2);
             sprintf(port,"%d",ntohs(remoteaddr.sin_port));
             getaddrinfo(inet_ntoa(remoteaddr.sin_addr),port,&hints,&res);
-            sprintf(buf,"\x05\x00\x01\x00%s%s",remoteaddr.sin_addr.s_addr,remoteaddr.sin_port);
-            if(send(sockfd,buf,10,0)<0){
-               perror("send address response error");
-               close(sockfd);
-               return;
-            } 
+            sprintf(buf,"\x05\x00\x00\x01%s%s",remoteaddr.sin_addr.s_addr,remoteaddr.sin_port);
             break;
         }
         case 3:
@@ -122,15 +117,32 @@ int deal_connection(int sockfd){
     serverfd=socket(res->ai_family,res->ai_socktype,res->ai_protocol);
     if(serverfd<0){
         perror("Socket creation failed");
+        sprintf(buf,"\x05\x01\x00\x01%s%s",remoteaddr.sin_addr.s_addr,remoteaddr.sin_port);
+        if(send(sockfd,buf,10,0)<0){
+               perror("send address response error");
+               close(sockfd);
+               return -1;
+        } 
         close(sockfd);
         return -1;
     }
-    memset(buf,0,sizeof buf);
     if(connect(serverfd,res->ai_addr,res->ai_addrlen)==-1){
         perror("connect real server error");
+         sprintf(buf,"\x05\x05\x00\x01%s%s",remoteaddr.sin_addr.s_addr,remoteaddr.sin_port);
+        if(send(sockfd,buf,10,0)<0){
+               perror("send address response error");
+               close(sockfd);
+               return;
+        } 
+        close(sockfd);
         close(sockfd);
         return -1;
     }
+    if(send(sockfd,buf,10,0)<0){
+               perror("send address response error");
+               close(sockfd);
+               return;
+            } 
     FD_ZERO(&master);
         FD_ZERO(&read_fds);
         FD_SET(sockfd,&master);
@@ -138,6 +150,7 @@ int deal_connection(int sockfd){
         fd_max=serverfd>sockfd?serverfd:sockfd;
         printf("established listenning!!!\r\n");
        for(;;){
+           memset(buf,0,sizeof buf);
            read_fds=master;
            if(select(fd_max+1,&read_fds,NULL,NULL,NULL)==-1){
                perror("select error!!!");
@@ -157,7 +170,7 @@ int deal_connection(int sockfd){
                     break;
                 }
                 else{
-                    printf("%s\r\n",buf);
+                    printf("client requested:\r\n%s\r\n",buf);
                     if(send(serverfd,buf,nbytes,0)==-1){
                         perror("closed transaction");
                         close(sockfd);
@@ -180,6 +193,7 @@ int deal_connection(int sockfd){
                     break;
                 }
                 else{
+                    printf("server responsed:\r\n%s\r\n",buf);
                     if(send(sockfd,buf,nbytes,0)==-1){
                         perror("closed transaction");
                         close(sockfd);
