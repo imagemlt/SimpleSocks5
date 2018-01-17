@@ -26,7 +26,6 @@ void *get_in_addr(struct sockaddr *sa)
 }
 
 int deal_connection(int sockfd){
-    printf("begin dealing a connection!!!\r\n");
     int serverfd,fd_max;
     fd_set master;
     fd_set read_fds;
@@ -37,6 +36,7 @@ int deal_connection(int sockfd){
     int i,j,rv;
     struct addrinfo hints,*res;
     int methods;
+    printf("begin dealing a connection!!!\r\n");
     memset(&hints,0,sizeof hints);
     hints.ai_family=AF_UNSPEC;
     hints.ai_socktype=SOCK_STREAM;
@@ -60,18 +60,25 @@ int deal_connection(int sockfd){
         close(sockfd);
         return -1;
     }
-    if(buf[2]>=0){
-        if(send(sockfd,"\x05\x00",2,0)<0){
+	for(i=0;i<buf[1];i++){
+		if(buf[2+i]==0){
+		break;
+		}
+	}
+    if(i==buf[1]){
+        if(send(sockfd,"\x05\xff",2,0)<0){
             perror("send error");
             close(sockfd);
             return -1;
         }
+	close(sockfd);
+	return -1;
     }
-    else{
-        perror("message error");
-        close(sockfd);
-        return -1;
-    }
+	if(send(sockfd,"\x05\x00",2,0)<0){
+	perror("send error");
+	close(sockfd);
+	return -1;
+	}
     if((rv=recv(sockfd,buf,sizeof buf,0))<0){
         perror("recv error");
     }
@@ -111,7 +118,7 @@ int deal_connection(int sockfd){
         default:{
             fprintf(stderr,"not supported yet\r\n");
             close(sockfd);
-            return;
+            return -1;
         }
     }
     serverfd=socket(res->ai_family,res->ai_socktype,res->ai_protocol);
@@ -132,7 +139,7 @@ int deal_connection(int sockfd){
         if(send(sockfd,buf,10,0)<0){
                perror("send address response error");
                close(sockfd);
-               return;
+               return -1;
         } 
         close(sockfd);
         close(sockfd);
@@ -141,7 +148,7 @@ int deal_connection(int sockfd){
     if(send(sockfd,buf,10,0)<0){
                perror("send address response error");
                close(sockfd);
-               return;
+               return -1;
             } 
     FD_ZERO(&master);
         FD_ZERO(&read_fds);
