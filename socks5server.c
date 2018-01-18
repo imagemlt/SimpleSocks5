@@ -32,12 +32,13 @@ int deal_connection(int sockfd){
     int serverfd,fd_max;
     fd_set master;
     fd_set read_fds;
+    struct hostent* realip;
     struct sockaddr_in remoteaddr;
     char buf[1024];
     char port[10];
     int nbytes;
     int i,j,rv;
-    struct addrinfo hints,*res;
+    struct addrinfo hints,*res,*p;
     int methods;
     printf("begin dealing a connection!!!\r\n");
     memset(&hints,0,sizeof hints);
@@ -166,7 +167,39 @@ int deal_connection(int sockfd){
             sprintf(buf,"\x05\x00\x00\x01%s%s",remoteaddr.sin_addr.s_addr,remoteaddr.sin_port);
             break;
         }
-        case 3:
+        case 3:{
+            char* addr=(char*)malloc(sizeof(char)*(buf[4]+1));
+            memset(addr,0,sizeof(char)*(buf[4]+1));
+            memcpy(addr,buf+5,buf[4]);
+            memcpy(&(remoteaddr.sin_port),buf+5+buf[4],2);
+            sprintf(port,"%d",ntohs(remoteaddr.sin_port));
+            if((rv=getaddrinfo(addr,port,&hints,&res))!=0){
+                fprintf("resolve host %s error:%s\r\n",addr,gai_strerror(rv));
+                send(sockfd,"\x05\x04\x00\x01\x00\x00\x00\x00\x00\x00",10,0);
+	            close(sockfd);
+		        return -1;
+            }
+            for(p=res;p!=NULL;p=p->ai_next){
+                void* addr;
+                char* ipver;
+                if(p->ai_family==AF_INET){
+                    break;
+                }
+            }
+            if(p==NULL){
+                fprintf("resolve host %s error:no usable ipv4 address\r\n",addr);
+                send(sockfd,"\x05\x04\x00\x01\x00\x00\x00\x00\x00\x00",10,0);
+	            close(sockfd);
+		        return -1;
+            }
+            //memset(buf,0,sizeof buf);
+            sprintf(buf,"\x05\x00\x00\x00%s%s",((struct sockaddr_in*)p)->sin_addr.s_addr,((struct sockaddr_in*)p)->sin_port);
+	buf[3]=1;
+            for(i=0;i<10;i++)printf("%02x  ",buf[i]);
+            printf("\r\n");
+            res=p;
+	break;
+	}
         case 4:
         default:{
             fprintf(stderr,"not supported yet\r\n");
@@ -177,7 +210,6 @@ int deal_connection(int sockfd){
     serverfd=socket(res->ai_family,res->ai_socktype,res->ai_protocol);
     if(serverfd<0){
         perror("Socket creation failed");
-        sprintf(buf,"\x05\x01\x00\x01%s%s",remoteaddr.sin_addr.s_addr,remoteaddr.sin_port);
         if(send(sockfd,buf,10,0)<0){
                perror("send address response error");
                close(sockfd);
@@ -198,11 +230,16 @@ int deal_connection(int sockfd){
         close(sockfd);
         return -1;
     }
+	printf("connect to server success!!!\r\n");
+
+	//sprintf(buf,"\x05\x00\x00\x01%s%s",remoteaddr.sin_addr.s_addr,remoteaddr.sin_port);
     if(send(sockfd,buf,10,0)<0){
                perror("send address response error");
                close(sockfd);
                return -1;
-            } 
+      } 
+	for(i=0;i<10;i++)printf("%02x ",buf[i]);
+	printf("\r\n");
     FD_ZERO(&master);
         FD_ZERO(&read_fds);
         FD_SET(sockfd,&master);
@@ -356,3 +393,6 @@ static void sig_child(int signo)
     while ((pid = waitpid(-1, &stat, WNOHANG)) >0)
     printf("child %d terminated.\n", pid);
 }
+
+
+
