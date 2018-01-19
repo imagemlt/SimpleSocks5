@@ -37,9 +37,10 @@ int deal_connection(int sockfd){
     char buf[1024];
     char port[10];
     int nbytes;
-    int i,j,rv;
+    int i,j,rv,yes;
     struct addrinfo hints,*res,*p;
     int methods;
+    yes=1;
     printf("begin dealing a connection!!!\r\n");
     memset(&hints,0,sizeof hints);
     hints.ai_family=AF_UNSPEC;
@@ -218,6 +219,7 @@ int deal_connection(int sockfd){
         close(sockfd);
         return -1;
     }
+     setsockopt(serverfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
     if(connect(serverfd,res->ai_addr,res->ai_addrlen)==-1){
         perror("connect real server error");
          sprintf(buf,"\x05\x05\x00\x01%s%s",remoteaddr.sin_addr.s_addr,remoteaddr.sin_port);
@@ -257,7 +259,7 @@ int deal_connection(int sockfd){
                 if((nbytes=recv(sockfd,buf,sizeof buf,0))==-1){
                     close(sockfd);
                     close(serverfd);
-                    perror("closed a transaction");
+                    perror("client closed  transaction");
                     break;
                 }
                 else if(nbytes==0){
@@ -269,7 +271,7 @@ int deal_connection(int sockfd){
                 else{
                     printf("client requested:\r\n%s\r\n",buf);
                     if(send(serverfd,buf,nbytes,0)==-1){
-                        perror("closed transaction");
+                        perror("client closed transaction");
                         close(sockfd);
                         close(serverfd);
                         break;
@@ -280,7 +282,7 @@ int deal_connection(int sockfd){
                 if((nbytes=recv(serverfd,buf,sizeof buf,0))==-1){
                     close(sockfd);
                     close(serverfd);
-                    perror("closed transaction");
+                    perror("server closed transaction");
                     break;
                 }
                 else if(nbytes==0){
@@ -292,7 +294,7 @@ int deal_connection(int sockfd){
                 else{
                     printf("server responsed:\r\n%s\r\n",buf);
                     if(send(sockfd,buf,nbytes,0)==-1){
-                        perror("closed transaction");
+                        perror("server closed transaction");
                         close(sockfd);
                         close(serverfd);
                         break;
@@ -300,6 +302,8 @@ int deal_connection(int sockfd){
                 }
             }
        }
+	//close(sockfd);
+	//close(serverfd);
 }
 
 int main(int argc,char* argv[])
@@ -377,6 +381,7 @@ int main(int argc,char* argv[])
             }
         pid=fork();
         if(pid==0)break;
+	close(newfd);
 
     }
     if(pid==0){
