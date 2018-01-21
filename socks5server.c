@@ -18,15 +18,6 @@ static void sig_child(int signo);
 char username[255];
 char password[255];
 int encrypt;
-void *get_in_addr(struct sockaddr *sa)
-{
-    if (sa->sa_family == AF_INET)
-    {
-        return &(((struct sockaddr_in *)sa)->sin_addr);
-    }
-    else
-        return &(((struct sockaddr_in6 *)sa)->sin6_addr);
-}
 
 int deal_connection(int sockfd){
     int serverfd,fd_max;
