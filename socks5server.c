@@ -23,14 +23,12 @@ int deal_connection(int sockfd){
     int serverfd,fd_max;
     fd_set master;
     fd_set read_fds;
-    struct hostent* realip;
     struct sockaddr_in remoteaddr;
     char buf[1024];
     char port[10];
     int nbytes;
     int i,j,rv,yes;
     struct addrinfo hints,*res,*p;
-    int methods;
     yes=1;
     printf("begin dealing a connection!!!\r\n");
     memset(&hints,0,sizeof hints);
