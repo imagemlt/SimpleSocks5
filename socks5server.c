@@ -1,15 +1,7 @@
 /*
 ** socks5server.c - A simple socks5 server
 */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <signal.h>
+#include "socks5server.h"
 
 #define PORT "1080"
 #define STDIN 0
@@ -28,10 +20,23 @@ int deal_connection(int sockfd){
     char port[10];
     int nbytes;
     int i,j,rv,yes;
+    METHOD_SELECT_REQUEST m_request;
+    METHOD_SELECT_RESPONSE m_response;
+    AUTH_REQUEST auth_request;
+    AUTH_RESPONSE auth_response;
+    SOCKS5_REQUEST socks5_request;
+    SOCKS5_RESONSE socks5_response;
     struct addrinfo hints,*res,*p;
     yes=1;
     printf("begin dealing a connection!!!\r\n");
     memset(&hints,0,sizeof hints);
+    memset(&m_request,0,sizeof m_request);
+    memset(&m_response,0,sizeof m_response);
+    memset(&auth_request,0,sizeof auth_request);
+    memset(&auth_response,0,sizeof auth_response);
+    memset(&socks5_request,0,sizeof socks5_request);
+    memset(&socks5_response,0,sizeof socks5_response);
+    printf("memset cleared\r\n");
     hints.ai_family=AF_UNSPEC;
     hints.ai_socktype=SOCK_STREAM;
     if((rv=recv(sockfd,buf,sizeof buf,0))<0){
@@ -44,33 +49,39 @@ int deal_connection(int sockfd){
         close(sockfd);
         return -1;
     }
-    if(buf[0]!=5){
+    memcpy(&m_request,buf,sizeof m_request);
+    if(m_request.VER!=5){
         fprintf(stderr,"socks type error!\r\n");
         close(sockfd);
         return -1;
     }
-    if(buf[1]<0){
+    if(m_request.NMETHODS<0){
         fprintf(stderr,"selective type low\r\n");
         close(sockfd);
         return -1;
     }
 	j=encrypt?2:0;
-	for(i=0;i<buf[1];i++){
-		if(buf[2+i]==j){
+	for(i=0;i<m_request.NMETHODS;i++){
+		if(m_request.METHODS[i]==j){
 		break;
 		}
 	}
-    if(i==buf[1]){
-        if(send(sockfd,"\x05\xff",2,0)<0){
+    if(i==m_request.NMETHODS){
+       
+        m_response.VER=5;
+        m_response.METHOD='\xff';
+        if(send(sockfd,&m_response,2,0)<0){
             perror("send error");
             close(sockfd);
             return -1;
         }
 	close(sockfd);
 	return -1;
-    }
+}
 	if(encrypt){
-		if(send(sockfd,"\x05\x02",2,0)<0){
+        m_response.VER=5;
+        m_response.METHOD=2;
+		if(send(sockfd,&m_response,2,0)<0){
 			perror("send encrypt error");
 			close(sockfd);
 			return -1;
@@ -79,23 +90,26 @@ int deal_connection(int sockfd){
 			perror("recv error");
 			close(sockfd);
 			return -1;
-		}
-		if(buf[0]!=1){
+        }
+        memcpy(&auth_request,buf,sizeof auth_request);
+		if(auth_request.VER!=1){
 			printf("version error\r\n");
 			printf("data recived:%d%d\r\n",buf[0],buf[1]);
 			close(sockfd);
 			return -1;
 		}
-		char* name=(char*)malloc((sizeof(char)) * (buf[1]+1));
-		memset(name,0,buf[1]+1);
-		strncpy(name,buf+2,buf[1]);
-		char* pass=(char*)malloc((sizeof(char))* (buf[buf[1]+2]+1));
-		memset(pass,0,(buf[buf[1]+2]+1));
-		strncpy(pass,buf+3+buf[1],buf[buf[1]+2]);
-		printf("%s,%s\r\n",name,pass);
+		char* name=(char*)malloc((sizeof(char)) * (auth_request.ULEN+1));
+		memset(name,0,auth_request.ULEN+1);
+		strncpy(name,auth_request.UNAME,auth_request.ULEN);
+		char* pass=(char*)malloc((sizeof(char))* (auth_request.UNAME[auth_request.ULEN]+1));
+		memset(pass,0,(auth_request.UNAME[auth_request.ULEN]+1));
+		strncpy(pass,buf+3+buf[1],auth_request.UNAME[auth_request.ULEN]);
+        printf("%s,%s\r\n",name,pass);
 		if(strcmp(username,name)||strcmp(password,pass)){
-			printf("encrypt error\r\n");
-			if(send(sockfd,"\x01\x01",2,0)<0){
+            printf("encrypt error\r\n");
+            auth_response.VER=1;
+            auth_response.STATUS=1;
+			if(send(sockfd,&auth_response,2,0)<0){
 				perror("send error");
 				close(sockfd);
 				return -1;
@@ -105,8 +119,10 @@ int deal_connection(int sockfd){
 		}
 		printf("encrypt success!!!\r\n");
 		free(name);
-		free(pass);
-		if(send(sockfd,"\x01\x00",2,0)<0){
+        free(pass);
+        auth_response.VER=1;
+        auth_response.STATUS=0;
+		if(send(sockfd,&auth_response,2,0)<0){
        		 	perror("send error");
         		close(sockfd);
         		return -1;
@@ -114,26 +130,28 @@ int deal_connection(int sockfd){
 
 	}
 	else{
-	if(send(sockfd,"\x05\x00",2,0)<0){
+        m_response.VER=5;
+        m_response.METHOD=0;
+	if(send(sockfd,&m_response,2,0)<0){
 	perror("send error");
 	close(sockfd);
 	return -1;
 	}
 	}
-	
     if((rv=recv(sockfd,buf,sizeof buf,0))<=0){
         perror("recv error");
 	close(sockfd);
 	return -1;
-    }
-   if(buf[0]!=5){
+}
+    memcpy(&socks5_request,buf,sizeof socks5_request);
+   if(socks5_request.VER!=5){
         fprintf(stderr,"socks type error!\r\n");
         close(sockfd);
         return -1;
     }
-    switch(buf[1]){
+    switch(socks5_request.CMD){
         case 1:{
-            if(buf[2]!=0){
+            if(socks5_request.RSV!=0){
                 fprintf(stderr,"socket error\r\n");
                 close(sockfd);
                 return -1;
@@ -148,24 +166,31 @@ int deal_connection(int sockfd){
             return -1;
         }
     } 
-    switch(buf[3]){
+    socks5_response.VER=5;
+    switch(socks5_request.ATYP){
         case 1:{
-            memcpy(&(remoteaddr.sin_addr.s_addr),buf+4,4);
-            memcpy(&(remoteaddr.sin_port),buf+8,2);
+            memcpy(&(remoteaddr.sin_addr.s_addr),socks5_request.DST,4);
+            memcpy(&(remoteaddr.sin_port),socks5_request.DST+4,2);
             sprintf(port,"%d",ntohs(remoteaddr.sin_port));
             getaddrinfo(inet_ntoa(remoteaddr.sin_addr),port,&hints,&res);
-            sprintf(buf,"\x05\x00\x00\x01%s%s",remoteaddr.sin_addr.s_addr,remoteaddr.sin_port);
+            socks5_response.REP=0;
+            socks5_response.ATYP=1;
+            memcpy(socks5_response.BND,&(remoteaddr.sin_addr.s_addr),4);
+            memcpy(socks5_response.BND+4,&(remoteaddr.sin_port),2);
+            //sprintf(socks5_response.BND,"%s%s",remoteaddr.sin_addr.s_addr,remoteaddr.sin_port);
             break;
         }
         case 3:{
-            char* addr=(char*)malloc(sizeof(char)*(buf[4]+1));
-            memset(addr,0,sizeof(char)*(buf[4]+1));
-            memcpy(addr,buf+5,buf[4]);
-            memcpy(&(remoteaddr.sin_port),buf+5+buf[4],2);
+            char* addr=(char*)malloc(sizeof(char)*(socks5_request.DST[0]+1));
+            memset(addr,0,sizeof(char)*(socks5_request.DST[0]+1));
+            memcpy(addr,socks5_request.DST+1,socks5_request.DST[0]);
+            memcpy(&(remoteaddr.sin_port),socks5_request.DST+1+socks5_request.DST[0],2);
             sprintf(port,"%d",ntohs(remoteaddr.sin_port));
             if((rv=getaddrinfo(addr,port,&hints,&res))!=0){
                 fprintf("resolve host %s error:%s\r\n",addr,gai_strerror(rv));
-                send(sockfd,"\x05\x04\x00\x01\x00\x00\x00\x00\x00\x00",10,0);
+                socks5_response.REP=4;
+                socks5_response.ATYP=1;
+                send(sockfd,&socks5_response,10,0);
 	            close(sockfd);
 		        return -1;
             }
@@ -178,15 +203,17 @@ int deal_connection(int sockfd){
             }
             if(p==NULL){
                 fprintf("resolve host %s error:no usable ipv4 address\r\n",addr);
-                send(sockfd,"\x05\x04\x00\x01\x00\x00\x00\x00\x00\x00",10,0);
+                socks5_response.ATYP=1;
+                socks5_response.REP=4;
+                send(sockfd,&socks5_response,10,0);
 	            close(sockfd);
 		        return -1;
             }
             //memset(buf,0,sizeof buf);
-            sprintf(buf,"\x05\x00\x00\x00%s%s",((struct sockaddr_in*)p)->sin_addr.s_addr,((struct sockaddr_in*)p)->sin_port);
-	buf[3]=1;
-            for(i=0;i<10;i++)printf("%02x  ",buf[i]);
-            printf("\r\n");
+            socks5_response.REP=0;
+            socks5_response.ATYP=1;
+            memcpy(socks5_response.BND,&(((struct sockaddr_in*)p)->sin_addr.s_addr),4);
+            memcpy(socks5_response.BND+4,&(((struct sockaddr_in*)p)->sin_port),2);
             res=p;
 	break;
 	}
@@ -200,7 +227,9 @@ int deal_connection(int sockfd){
     serverfd=socket(res->ai_family,res->ai_socktype,res->ai_protocol);
     if(serverfd<0){
         perror("Socket creation failed");
-        if(send(sockfd,buf,10,0)<0){
+        socks5_response.ATYP=1;
+        socks5_response.REP=4;
+        if(send(sockfd,&socks5_response,10,0)<0){
                perror("send address response error");
                close(sockfd);
                return -1;
@@ -211,8 +240,10 @@ int deal_connection(int sockfd){
      setsockopt(serverfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
     if(connect(serverfd,res->ai_addr,res->ai_addrlen)==-1){
         perror("connect real server error");
-         sprintf(buf,"\x05\x05\x00\x01%s%s",remoteaddr.sin_addr.s_addr,remoteaddr.sin_port);
-        if(send(sockfd,buf,10,0)<0){
+        socks5_response.REP=5;
+        socks5_response.ATYP=1;
+         sprintf(socks5_response.BND,"%s%s",remoteaddr.sin_addr.s_addr,remoteaddr.sin_port);
+        if(send(sockfd,&socks5_response,10,0)<0){
                perror("send address response error");
                close(sockfd);
                return -1;
@@ -222,9 +253,7 @@ int deal_connection(int sockfd){
         return -1;
     }
 	printf("connect to server success!!!\r\n");
-
-	//sprintf(buf,"\x05\x00\x00\x01%s%s",remoteaddr.sin_addr.s_addr,remoteaddr.sin_port);
-    if(send(sockfd,buf,10,0)<0){
+    if(send(sockfd,&socks5_response,10,0)<0){
                perror("send address response error");
                close(sockfd);
                return -1;
